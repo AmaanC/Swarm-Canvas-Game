@@ -1,0 +1,278 @@
+<!DOCTYPE html>
+<html>
+<head>
+<title>Swarm - Canvas Game</title>
+</head>
+
+<body>
+<canvas id='canvas' height='300' width='600' style='border:solid'></canvas>
+<br>
+<progress id='progress' value='50' max='100'></progress>
+<br>
+<span id='level'></span>
+<br>
+<ul>
+<li>Use the arrow keys to move.</li>
+<li>Avoid red rectangles.</li>
+<li>Gather green rectangles for a health bonus.</li>
+<li>Hit the space bar to pause.</li>
+</ul>
+Cross all 10 levels if you can!
+
+<style>
+progress,          /* All HTML5 progress enabled browsers */
+progress::-webkit-progress-bar
+{
+
+	/* Turns off styling - not usually needed, but good to know. */
+	appearance: none;
+	-moz-appearance: none;
+	-webkit-appearance: none;
+
+	/* gets rid of default border in Firefox and Opera. */
+	border: none;
+
+	/* Needs to be in here for Safari polyfill so background images work as expected. */
+	background-size: auto;
+
+	/* Dimensions */
+	width: 600px;
+	height: 10px;
+	/* background-color: white; */
+
+}
+</style>
+
+<script type="text/javascript">
+(function (){
+	var canvas = document.getElementById('canvas'),
+	ctx = canvas.getContext('2d');
+	var progressElem = document.getElementById('progress');
+	var isDown = {}, alive, level = 1;
+	var paused = false;
+
+// Three kinds of bugs: Player (mainGuy), chasers, and bonus. Player is true, chaser is undefined / false, and bonus is 0.
+	var Bug = function(player){
+		var x, y, disx, disy, speed = 0, maxSpeed, width, height, angle = radian(0), acc = 1;
+		this.stopped = false;
+		width = 20;
+		height = 10;
+		if(player){
+			x = 300;
+			y = 200;
+			maxSpeed = 10;
+			this.health = 255;
+			//Health starts at 255, goes down by 15 for each bug. Therefore, 17 bugs kill you. Made it this way so it'd be easy to co-ordinate with the background color
+			var points = 0, targetPoints = Math.pow(level, 2)*50;
+		}
+		else{
+			x = -100 + Math.random() * (canvas.width+100);
+			y = -100 + Math.random() * (canvas.height+100);
+			if(x > 0 && x < canvas.width && y > 0 && y < canvas.height){
+				Math.random() > 0.5 ?
+				x = (Math.random() > 0.5) ? -(Math.random()*50) : canvas.width + Math.random()*50
+				:
+				y = (Math.random() > 0.5) ? -(Math.random()*50) : canvas.height + Math.random()*50;
+			}
+			maxSpeed = 2 + (Math.random() * 5);
+		}
+
+
+		function radian(degree){
+			return degree * Math.PI / 180;
+		}
+
+		function degree(radian){
+			return radian * 180 / Math.PI;
+		}
+
+		this.anim = function (){
+			
+			var brAngle = Math.atan(height / width),
+			brDist = Math.sqrt(width * width + height * height),
+
+			blX = x + (Math.cos(radian(90 - degree(angle))) * -height),
+			blY = y + (Math.sin(radian(90 - degree(angle))) * height),
+
+			brX = x + (Math.cos(angle + brAngle) * brDist),
+			brY = y + (Math.sin(angle + brAngle) * brDist),
+
+			trX = x + (Math.cos(angle) * width),
+			trY = y + (Math.sin(angle) * width);
+			
+			//Controls for the player and for the chasers
+			if(player){
+				if(speed > 0){
+					if(isDown['39']){
+						angle += radian(10);
+					}
+					if(isDown['37']){
+						angle -= radian(10);
+					}
+				}
+			
+				if(isDown['38']){
+					acc = 1;
+					speed += acc;
+				}
+				else if(this.stopped === true){
+					speed -= acc;
+					if(speed <= 0){
+						speed = 0;
+						this.stopped = false;
+					}
+				}
+			}
+			else{
+				speed = maxSpeed;
+				// var centerX = (mainGuy.x+mainGuy.blX)/2,
+				// centerY     = (mainGuy.y+mainGuy.blY)/2;
+				// angle = Math.atan2((mainGuy.y - y) , (mainGuy.x - x));
+				angle = Math.atan2(mainGuy.y - y, mainGuy.x - x);
+			}
+
+			if(speed > maxSpeed){
+				speed = maxSpeed;
+			}
+
+			disx = speed * Math.cos(angle);
+			disy = speed * Math.sin(angle);
+			x += disx;
+			y += disy;
+			x = (x > canvas.width) ? 0 : (x < 0) ? canvas.width : x;
+			y = (y > canvas.height) ? 0 : (y < 0) ? canvas.height : y;
+			//Make the player's position known to all chasers
+			//(X,Y)---------
+			//|             |
+			//|             |--VROOOOOOOOOOOOM!
+			//|             |
+			//--------------
+			//I was bored.
+			if(player){
+				this.x = x;
+				this.y = y;
+				points += alive/30;
+				progressElem.value = points;
+				if(points > targetPoints){
+					level++;
+					document.getElementById('level').textContent = level;
+					points = 0;
+					spawnChasers(level*20);
+					targetPoints = Math.pow(level, 2)*50;;
+					progressElem.max = targetPoints;
+				}
+				if(mainGuy.health <= 0){
+					spawnChasers(level*20);
+					points = 0;
+				}
+			}
+			else{
+				//Collision test
+				//This isn't a precise hit-test, but it works
+				if( Math.sqrt(Math.pow((mainGuy.x - x) , 2) + Math.pow((mainGuy.y - y) , 2)) < width){
+					this.anim = function(){};
+					mainGuy.health -= (player === 0) ? -80 : 10;
+					if(player !== 0){
+						alive--;
+					}
+				}
+			}
+
+			ctx.save();
+			ctx.translate(x, y);
+			ctx.rotate(angle);
+			// Player's black, bonus is green, chaser is maroon
+			ctx.fillStyle = player ? "black" : (player === 0) ? "green" : "maroon";
+			ctx.strokeStyle = "white";
+			ctx.fillRect(0, 0, width, height);
+			ctx.strokeRect(0, 0, width, height);
+			ctx.restore();
+		};
+	};
+
+	var mainGuy = new Bug(true);
+
+	window.addEventListener('keydown', function (e){
+		isDown[e.which] = true;
+		if(e.which === 32){
+			if(paused === true){
+				console.log('set');
+				intervalID = window.setInterval(function (){
+					ctx.fillStyle = "rgb(255,"+mainGuy.health+","+mainGuy.health+")";
+					ctx.fillRect(0, 0, canvas.width, canvas.height);
+					ctx.fill();
+					mainAnim();
+					if(level > 10){
+						window.clearInterval(intervalID);
+					}
+				}, 100/3);
+				paused = false; 
+			}
+			else{
+				window.clearInterval(intervalID);
+				paused = true;
+			}
+		}
+	}, false);
+
+	window.addEventListener('keyup', function (e){
+		delete isDown[e.which];
+		if(e.which === 38){
+			mainGuy.stopped = true;
+		}
+	}, false);
+
+	var chasers, chaserIDs = [];
+	var spawnChasers = function (n){
+		chasers = [];
+		chaserIDs.forEach(function(id){
+			window.clearInterval(id);
+		})
+		chaserIDs = [];
+		alive = n;
+		mainGuy.health = 255;
+		var timeDelay = 5, kindOfChaser;
+		for(var i = 1; i <= n; i++){
+			// Make every 30th chaser a bonus chaser
+			kindOfChaser = (i%30 === 0) ? 0 : false;
+			
+			// Closure because setTimeout is global, unlike kindOfChaser
+			(function (kindOfChaser){
+				chaserIDs.push(
+					setTimeout(function (){
+						chasers.push(new Bug(kindOfChaser));
+					}, Math.random() * timeDelay * 1000)
+				);
+			})(kindOfChaser)
+
+			if(i%10 === 0){
+				timeDelay+=5;
+			}
+		}
+	};
+
+	var mainAnim = function(){
+		console.log('a');
+		mainGuy.anim();
+		for (var i = chasers.length - 1; i >= 0; i--) {
+			chasers[i].anim();
+		}
+	};
+
+	spawnChasers(level*20);
+	// Set the ball rolling by getting level 1 started
+
+	var intervalID = window.setInterval(function (){
+		ctx.fillStyle = "rgb(255,"+mainGuy.health+","+mainGuy.health+")";
+		ctx.fillRect(0, 0, canvas.width, canvas.height);
+		ctx.fill();
+		mainAnim();
+		if(level > 10){
+			window.clearInterval(intervalID);
+		}
+	}, 100/3);
+})();
+</script>
+
+</body>
+</html>
